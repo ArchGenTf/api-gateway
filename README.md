@@ -9,8 +9,8 @@ This repository houses the API Gateway microservice. CI/CD builds, quality gates
 The workflow defined in [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) triggers on pushes or pull requests to the `master`/`main` branches. It calls the reusable workflow in the `Main` repository with the following parameters:
 - **Service Name**: `api-gateway`
 - **Helm Directory**: `api-gateway`
-- **Dev Registry Repository**: `acrarchgendev.azurecr.io/api-gateway`
-- **Prod Registry Repository**: `acrarchgenprod.azurecr.io/api-gateway`
+- **Dev Registry Repository**: `acrarchgen.azurecr.io/api-gateway`
+- **Prod Registry Repository**: `acrarchgen.azurecr.io/api-gateway`
 - **Local Smoke Test Port**: `8080`
 - **Local Smoke Test Endpoint**: `/healthz`
 - **Lint Command**: `pip install flake8 && flake8 . --exclude=venv,env,.dist,__pycache__ --ignore=E501`
@@ -22,9 +22,9 @@ The workflow defined in [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.ym
 4. **Docker Image Build**: Compiles the image using the local `Dockerfile`.
 5. **Local Smoke Test**: Spins up the container on port `8080`, curls `/healthz` to verify startup success, and tears it down.
 6. **Trivy Scan**: Checks image CVE vulnerabilities.
-7. **Deploy to Dev**: Pushes image to Dev ACR and updates `values-dev.yaml` on the `dev` branch of the `Main` repo.
+7. **Deploy to Dev**: Pushes image to the ACR and updates `values-dev.yaml` on the `dev` branch of the `Main` repo.
 8. **Slack Alerts**: Notifies your Slack channel of dev build success or failure.
-9. **Production Promotion (Approval-Gated)**: Pauses for manual approval under the `production` environment. Upon approval, pushes image to Prod ACR and updates `values-prod.yaml` on the `master` branch.
+9. **Production Promotion (Approval-Gated)**: Pauses for manual approval under the `production` environment. Upon approval, pushes image to the ACR and updates `values-prod.yaml` on the `master` branch.
 
 ---
 

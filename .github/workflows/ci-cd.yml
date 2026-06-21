@@ -16,8 +16,8 @@ jobs:
     with:
       service_name: "api-gateway"
       helm_dir: "api-gateway"
-      image_repository_dev: "acrarchgendev.azurecr.io/api-gateway"
-      image_repository_prod: "acrarchgenprod.azurecr.io/api-gateway"
+      image_repository_dev: "acrarchgen.azurecr.io/api-gateway"
+      image_repository_prod: "acrarchgen.azurecr.io/api-gateway"
       dockerfile_path: "./Dockerfile"
       smoke_test_port: "8080"
       smoke_test_endpoint: "/healthz"

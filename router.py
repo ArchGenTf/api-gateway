@@ -1,28 +1,33 @@
 import httpx
-from fastapi import APIRouter, Request, Response, HTTPException
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from starlette.status import HTTP_502_BAD_GATEWAY
 from config import Settings, get_settings
 from utils.correlation import get_correlation_id
 from starlette.background import BackgroundTask
 
+
 async def cleanup(resp, client):
     await resp.aclose()
     await client.aclose()
 
+
 router = APIRouter()
+
 
 # Health endpoints
 @router.get("/healthz")
 async def healthz():
     return JSONResponse(content={"status": "healthy"})
 
+
 @router.get("/readyz")
 async def readyz():
     return JSONResponse(content={"status": "ready"})
 
+
 # Proxy endpoint – catches all /api/* routes
-@router.api_route("/api/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]) 
+@router.api_route("/api/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 async def proxy(full_path: str, request: Request):
     settings: Settings = get_settings()
     # Determine target service based on path

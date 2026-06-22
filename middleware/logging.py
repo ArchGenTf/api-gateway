@@ -1,10 +1,9 @@
 import time
-import uuid
-import logging
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from utils.correlation import get_or_set_correlation_id
 from loguru import logger
+
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -30,8 +29,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         response.headers["X-Correlation-Id"] = correlation_id
         return response
 
-# Helper to add middleware in app creation
 
+# Helper to add middleware in app creation
 def add_logging(app):
     # Configure loguru if not already configured
     try:

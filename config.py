@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field, AnyUrl
 
+
 class Settings(BaseSettings):
     # Core settings
     GATEWAY_PORT: int = Field(8080, env="GATEWAY_PORT")
@@ -18,6 +19,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+
 
 # Singleton for FastAPI to access settings via app.state.settings
 def get_settings() -> Settings:

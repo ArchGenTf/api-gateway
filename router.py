@@ -21,6 +21,7 @@ async def healthz():
     return JSONResponse(content={"status": "healthy"})
 
 
+@router.get("/ready")
 @router.get("/readyz")
 async def readyz():
     return JSONResponse(content={"status": "ready"})

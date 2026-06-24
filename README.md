@@ -10,10 +10,10 @@ The API Gateway intercepts all external requests under the `/api/` prefix and ro
 
 ```mermaid
 graph TD
-    Client[Client / Ingress Gateway] -->|HTTP Request| GW[API Gateway]
-    GW -->|/api/auth/*| AuthSvc[Auth Service: Port 8001]
-    GW -->|/api/projects*| ProjSvc[Project Service: Port 8002]
-    GW -->|/api/* (Fallback)| ArchSvc[Architecture Service: Port 8003]
+    Client[Client / Ingress Gateway] -->|"HTTP Request"| GW[API Gateway]
+    GW -->|"/api/auth/*"| AuthSvc[Auth Service: Port 8001]
+    GW -->|"/api/projects*"| ProjSvc[Project Service: Port 8002]
+    GW -->|"/api/* (Fallback)"| ArchSvc[Architecture Service: Port 8003]
 ```
 
 ### Key Middlewares & Behaviors:

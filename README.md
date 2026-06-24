@@ -1,76 +1,116 @@
-# API Gateway Microservice
+# API Gateway
 
-###Test-1
-
-This repository houses the API Gateway microservice. CI/CD builds, quality checks, and GitOps promotions are handled via the centralized modular pipeline.
+The API Gateway is the central entry point and reverse proxy for the ArchGen microservices platform. Built on **FastAPI** and utilizing **httpx** for high-performance asynchronous request forwarding, the gateway routes external client traffic to downstream microservices, handles cross-origin resource sharing (CORS), appends correlation IDs for distributed tracing, and records transaction logs.
 
 ---
 
-## CI/CD Pipeline Triggers
+## 1. Architectural Role & Flow
 
-The calling workflow [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) triggers on two events:
-1. **Pull Request to `master`**: Runs the `pr-checks` job inside the reusable `backend.yml` pipeline.
-2. **Merge/Push to `master`**: Runs the `build` job inside the reusable `backend.yml` pipeline.
+The API Gateway intercepts all external requests under the `/api/` prefix and routes them dynamically based on the path structure:
 
-### Pipeline Stages
+```mermaid
+graph TD
+    Client[Client / Ingress Gateway] -->|HTTP Request| GW[API Gateway]
+    GW -->|/api/auth/*| AuthSvc[Auth Service: Port 8001]
+    GW -->|/api/projects*| ProjSvc[Project Service: Port 8002]
+    GW -->|/api/* (Fallback)| ArchSvc[Architecture Service: Port 8003]
+```
 
-#### PR Checks (`pull_request`)
-1. **Lint Check**: Checks python code formatting using `flake8`.
-2. **SonarCloud Scan**: Validates code quality and safety.
-3. **Snyk Scan**: Scans python library dependencies for CVEs.
-4. **Notifications**: Sends Slack notifications with the results.
-
-#### Build & Deploy (`push`)
-1. **Metadata Generation**: Creates a short SHA tag (e.g. `sha-f32a762`).
-2. **Docker Build**: Compiles the image using the local `Dockerfile`.
-3. **Trivy CVE Scan**: Checks the compiled container image for vulnerabilities.
-4. **Registry Push**: Pushes the image to `acrarchgen.azurecr.io/api-gateway` with the short SHA tag and the `latest` tag.
-5. **Repository Dispatch**: Fires a `service-image-updated` dispatch event to the `Main` repo to trigger automatic deployment to Dev.
-6. **Notifications**: Sends Slack notifications.
+### Key Middlewares & Behaviors:
+1. **CORS Middleware** ([cors.py](file:///c:/Users/Praveen/Desktop/New%20folder/api-gateway/middleware/cors.py)): Configures access controls dynamically by loading allowed origins from environment variables (`ALLOWED_ORIGINS`) and appending the production domain (`PRODUCTION_ORIGIN`). Supports common HTTP methods (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `OPTIONS`, `HEAD`) and headers (`Authorization`, `Content-Type`, `Accept`, `X-Correlation-Id`).
+2. **Logging Middleware**: Logs incoming HTTP requests, paths, and response statuses to help with observability and debugging.
+3. **Correlation ID Filter**: Extracts the `X-Correlation-Id` header from requests or injects one if missing. This ID is passed to downstream services, allowing end-to-end tracing of individual requests across all microservices.
 
 ---
 
-## Required Secrets Setup & Generation Guide
+## 2. Configuration & Environment Variables
 
-Add these secrets to your GitHub repository under `Settings` -> `Secrets and variables` -> `Actions` to authorize and run the pipeline:
+The gateway configuration is managed in [config.py](file:///c:/Users/Praveen/Desktop/New%20folder/api-gateway/config.py) using `pydantic-settings`. It reads configuration parameters from a local `.env` file or direct container environment bindings:
 
-### 1. `GH_PAT` (GitHub Personal Access Token)
-*Required. Needed to check out and push tag updates to the Main repository and trigger dispatches.*
-1. Go to your GitHub profile settings: `Settings` -> `Developer settings` -> `Personal access tokens` -> `Tokens (classic)`.
-2. Click **Generate new token** -> **Generate new token (classic)**.
-3. Set the note (e.g., `gitops-infra-token`) and check the `repo` scope checkbox.
-4. Click **Generate token** and copy it immediately.
-5. Save this as `GH_PAT` in your service repository secrets.
-
-### 2. `AZURE_CREDENTIALS` (Azure Service Principal)
-*Required. Needed to authenticate and push container images to Azure Container Registry (`acrarchgen.azurecr.io`).*
-1. Open the Azure CLI or Cloud Shell.
-2. Generate a Service Principal JSON payload by running:
-   ```bash
-   az ad sp create-for-rbac --name "github-actions-sp" --role contributor --scopes /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP_NAME> --sdk-auth
-   ```
-   *(Replace `<SUBSCRIPTION_ID>` and `<RESOURCE_GROUP_NAME>` with your Azure subscription ID and resource group where your ACR resides)*
-3. Copy the output JSON block and save it as `AZURE_CREDENTIALS` in your repository secrets.
-
-### 3. `SLACK_WEBHOOK` (Slack Incoming Webhook URL)
-*Optional. Needed to send pipeline success/failure alerts to Slack.*
-1. Create a Slack App in your workspace via the [Slack API console](https://api.slack.com/apps).
-2. Go to **Incoming Webhooks** and toggle it **On**.
-3. Click **Add New Webhook to Workspace**, select the target channel, and click **Allow**.
-4. Copy the generated Webhook URL (starts with `https://hooks.slack.com/services/`).
-5. Save this as `SLACK_WEBHOOK` in your repository secrets.
-
-### 4. SonarCloud & Snyk Secrets
-*Optional. Configure these to enable static code security analysis and library scanning.*
-- `SONAR_TOKEN`: API token generated from SonarCloud (`My Account` -> `Security`).
-- `SONAR_KEY`: (Optional) Custom Sonar project key (defaults to `ArchGenTf_api-gateway`).
-- `SNYK_TOKEN`: Snyk API token generated from Snyk account settings.
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `GATEWAY_PORT` | `int` | `8080` | The port the gateway server binds to inside the container. |
+| `GATEWAY_REQUEST_TIMEOUT` | `int` | `300` | Gateway request timeout in seconds for downstream service calls. |
+| `PRODUCTION_ORIGIN` | `str` | *Required* | The production origin allowed by CORS policy (e.g. `https://printnow.space`). |
+| `AUTH_SERVICE_URL` | `AnyUrl` | *Required* | Downstream base URL for the Auth Service. |
+| `PROJECT_SERVICE_URL` | `AnyUrl` | *Required* | Downstream base URL for the Project Service. |
+| `ARCHITECTURE_SERVICE_URL` | `AnyUrl` | *Required* | Downstream base URL for the Architecture/AI Service. |
+| `ALLOWED_ORIGINS` | `str` | `http://localhost:3000,http://localhost:5173` | Comma-separated list of allowed origins for development. |
 
 ---
 
-## Production Release Flow
+## 3. Route Mapping Logic
 
-To deploy a verified image to production:
-1. Go to the `Main` (`Infra`) repository on GitHub.
-2. Publish a **GitHub Release** with a tag formatted as: `api-gateway-v<version>` (e.g. `api-gateway-v1.0.0`).
-3. This triggers the production release workflow, which retags the dev image to `v1.0.0` and updates `k8s/api-gateway/values-prod.yaml` on the `master` branch.
+Downstream proxy logic is defined in [router.py](file:///c:/Users/Praveen/Desktop/New%20folder/api-gateway/router.py). The gateway strips hop-by-hop headers before forwarding:
+
+* **Auth Service Target**:
+  - Request Path: `/api/auth/{remaining_path}`
+  - Downstream URL: `AUTH_SERVICE_URL/auth/{remaining_path}`
+  - Example: `/api/auth/login` $\rightarrow$ `http://auth-service:8001/auth/login`
+* **Project Service Target**:
+  - Request Path: `/api/projects` or `/api/projects/{remaining_path}`
+  - Downstream URL: `PROJECT_SERVICE_URL/projects` or `PROJECT_SERVICE_URL/projects/{remaining_path}`
+  - Example: `/api/projects/65c82a17...` $\rightarrow$ `http://project-service:8002/projects/65c82a17...`
+* **Architecture Service Target**:
+  - Request Path: `/api/{other_path}` (fallback)
+  - Downstream URL: `ARCHITECTURE_SERVICE_URL/{other_path}`
+  - Example: `/api/generate-architecture` $\rightarrow$ `http://architecture-service:8003/generate-architecture`
+
+---
+
+## 4. API Endpoints Reference
+
+### Health check Endpoints
+The gateway directly handles health checks for ingress monitoring and Kubernetes probes:
+
+#### `GET /healthz`
+- **Description**: Returns the operational status of the gateway.
+- **Request Headers**: None
+- **Response (200 OK)**:
+  ```json
+  {
+    "status": "healthy"
+  }
+  ```
+
+#### `GET /ready` or `GET /readyz`
+- **Description**: Returns the readiness probe status of the gateway.
+- **Request Headers**: None
+- **Response (200 OK)**:
+  ```json
+  {
+    "status": "ready"
+  }
+  ```
+
+### Catch-All Proxy Router
+
+#### `GET/POST/PUT/DELETE/PATCH/OPTIONS/HEAD /api/{full_path:path}`
+- **Description**: Catches all requests matching the prefix `/api/` and routes them to their respective microservices.
+- **Headers**:
+  - `X-Correlation-Id` (Optional/Injected): Correlation identifier.
+  - `Authorization: Bearer <JWT_TOKEN>` (Optional/Required downstream): Passed transparently.
+- **Request Body**: Accepts any text or JSON payload and streams it to the destination.
+- **Response (200 OK, 4xx, 5xx)**: Returns the status, headers, and body stream received from the downstream service.
+- **Response (502 Bad Gateway)**:
+  - Triggered if a connection to the downstream service cannot be established or times out.
+  - Body:
+    ```json
+    {
+      "detail": "Connection error or host unreachable details"
+    }
+    ```
+
+---
+
+## 5. OpenAPI & Interactive API Documentation
+
+While the gateway acts as a reverse proxy, the Swagger UI of individual downstream services can be accessed:
+
+1. **Architecture/AI Service OpenAPI**:
+   - Access Path: `http://api.printnow.space/api/docs` (production) or `http://localhost:8080/api/docs` (local gateway dev).
+   - This works because any path under `/api/` not matched by `auth` or `projects` routes directly to the architecture service.
+2. **Auth Service OpenAPI**:
+   - Accessed directly in local development environments at `http://localhost:8001/docs`.
+3. **Project Service OpenAPI**:
+   - Accessed directly in local development environments at `http://localhost:8002/docs`.
